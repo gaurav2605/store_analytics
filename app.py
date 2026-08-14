@@ -69,16 +69,12 @@ def load_data(file):
         # Date conversions
         df['Order_Date'] = pd.to_datetime(df['Order_Date'])
         
-        # Boolean conversions for rates 
-        if df['Returned'].dtype == 'O':
-            df['Returned_Num'] = df['Returned'].astype(str).str.lower().map({'yes': 1, 'true': 1, 'no': 0, 'false': 0}).fillna(0)
-        else:
-            df['Returned_Num'] = df['Returned']
-            
-        if df['Complaint'].dtype == 'O':
-            df['Complaint_Num'] = df['Complaint'].astype(str).str.lower().map({'yes': 1, 'true': 1, 'no': 0, 'false': 0}).fillna(0)
-        else:
-            df['Complaint_Num'] = df['Complaint']
+        # Aggressively force boolean/text into strictly 1s and 0s (integers)
+        ret_str = df['Returned'].astype(str).str.strip().str.lower()
+        df['Returned_Num'] = np.where(ret_str.isin(['yes', 'true', '1', '1.0', 'y']), 1, 0)
+        
+        comp_str = df['Complaint'].astype(str).str.strip().str.lower()
+        df['Complaint_Num'] = np.where(comp_str.isin(['yes', 'true', '1', '1.0', 'y']), 1, 0)
             
         # ROI calculation
         df['ROI'] = (df['Revenue'] - df['Marketing_Spend']) / df['Marketing_Spend'].replace(0, np.nan)
@@ -87,11 +83,6 @@ def load_data(file):
     except Exception as e:
         st.error(f"Error processing dataset: {e}")
         return pd.DataFrame()
-
-df_raw = load_data(uploaded_file)
-
-if df_raw.empty:
-    st.stop()
 
 # ==========================================
 # GLOBAL FILTERS

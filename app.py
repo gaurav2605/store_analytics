@@ -20,7 +20,7 @@ st.markdown("""
         padding: 20px;
         border-radius: 8px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
-        border-left: 5px solid #4F46E5; /* Indigo accent */
+        border-left: 5px solid #4F46E5;
         margin-bottom: 20px;
     }
     .kpi-title { color: #64748B; font-size: 0.9rem; font-weight: 600; text-transform: uppercase; }
@@ -235,8 +235,10 @@ elif page == "Diagnostic Analysis":
         best_cat, _, worst_cat, _ = get_dim_change('Category')
         best_reg, _, worst_reg, _ = get_dim_change('Region')
         
+        # FIX: Safely coerce columns to numeric to prevent ValueError crashes
         numeric_cols = ['Discount_%', 'Delivery_Days', 'Marketing_Spend', 'Competitor_Price', 'Stock_Availability']
-        correlations = df[numeric_cols + [kpi_info['col']]].corr()[kpi_info['col']].drop(kpi_info['col'])
+        corr_df = df[numeric_cols + [kpi_info['col']]].apply(pd.to_numeric, errors='coerce')
+        correlations = corr_df.corr()[kpi_info['col']].drop(kpi_info['col'])
         
         trend_word = "increased" if pct_change > 0 else "decreased"
         

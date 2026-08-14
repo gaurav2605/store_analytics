@@ -25,8 +25,6 @@ st.markdown("""
     }
     .kpi-title { color: #64748B; font-size: 0.9rem; font-weight: 600; text-transform: uppercase; }
     .kpi-value { color: #0F172A; font-size: 1.8rem; font-weight: 700; margin: 5px 0; }
-    .kpi-change-pos { color: #10B981; font-weight: 600; font-size: 0.9rem;}
-    .kpi-change-neg { color: #EF4444; font-weight: 600; font-size: 0.9rem;}
     .insight-box {
         background-color: #EEF2FF;
         border: 1px solid #C7D2FE;
@@ -39,17 +37,39 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
+# SIDEBAR NAVIGATION & DATA UPLOAD
+# ==========================================
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Go to", [
+    "Executive Overview", 
+    "Diagnostic Analysis", 
+    "Customer Analysis", 
+    "Product & Operations", 
+    "Marketing Analysis"
+])
+
+st.sidebar.markdown("---")
+st.sidebar.header("Data Source")
+uploaded_file = st.sidebar.file_uploader("Drag & Drop your .xlsx file here", type=["xlsx"])
+
+# Stop the app from running further until a file is uploaded
+if uploaded_file is None:
+    st.title("📊 AI-Powered Diagnostic Dashboard")
+    st.info("👋 Welcome! Please upload your e-commerce dataset (Excel file) in the left sidebar to launch the dashboard.")
+    st.stop()
+
+# ==========================================
 # DATA LOADING & PREPROCESSING
 # ==========================================
 @st.cache_data
-def load_data():
+def load_data(file):
     try:
-        df = pd.read_excel("diagnostic_ecommerce_1500.xlsx")
+        df = pd.read_excel(file)
         
         # Date conversions
         df['Order_Date'] = pd.to_datetime(df['Order_Date'])
         
-        # Boolean conversions for rates (assuming Yes/No or True/False strings)
+        # Boolean conversions for rates 
         if df['Returned'].dtype == 'O':
             df['Returned_Num'] = df['Returned'].astype(str).str.lower().map({'yes': 1, 'true': 1, 'no': 0, 'false': 0}).fillna(0)
         else:
@@ -65,25 +85,13 @@ def load_data():
         
         return df
     except Exception as e:
-        st.error(f"Error loading dataset: {e}")
+        st.error(f"Error processing dataset: {e}")
         return pd.DataFrame()
 
-df_raw = load_data()
+df_raw = load_data(uploaded_file)
 
 if df_raw.empty:
     st.stop()
-
-# ==========================================
-# SIDEBAR NAVIGATION
-# ==========================================
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", [
-    "Executive Overview", 
-    "Diagnostic Analysis", 
-    "Customer Analysis", 
-    "Product & Operations", 
-    "Marketing Analysis"
-])
 
 # ==========================================
 # GLOBAL FILTERS
@@ -92,7 +100,7 @@ st.sidebar.markdown("---")
 st.sidebar.header("Global Filters")
 
 if st.sidebar.button("Reset Filters"):
-    st.experimental_rerun()
+    st.rerun()
 
 # Date Filter
 min_date = df_raw['Order_Date'].min().date()
@@ -121,9 +129,6 @@ if channel_filter: df = df[df['Marketing_Channel'].isin(channel_filter)]
 def format_inr(value):
     return f"₹{value:,.0f}"
 
-# ==========================================
-# HELPER COMPONENTS
-# ==========================================
 def render_kpi_card(title, value, is_currency=False, is_percent=False):
     if is_currency: formatted_val = format_inr(value)
     elif is_percent: formatted_val = f"{value:.1f}%"
@@ -142,7 +147,6 @@ def render_kpi_card(title, value, is_currency=False, is_percent=False):
 if page == "Executive Overview":
     st.title("Executive Overview")
     
-    # KPIs
     c1, c2, c3, c4 = st.columns(4)
     with c1: render_kpi_card("Total Revenue", df['Revenue'].sum(), is_currency=True)
     with c2: render_kpi_card("Total Profit", df['Profit'].sum(), is_currency=True)
@@ -155,19 +159,16 @@ if page == "Executive Overview":
     with c7: render_kpi_card("Complaint Rate", df['Complaint_Num'].mean() * 100, is_percent=True)
     with c8: render_kpi_card("Avg Rating", df['Customer_Rating'].mean() or 0)
 
-    # Charts
     col1, col2 = st.columns(2)
     with col1:
         rev_time = df.groupby(df['Order_Date'].dt.to_period("M"))['Revenue'].sum().reset_index()
         rev_time['Order_Date'] = rev_time['Order_Date'].dt.to_timestamp()
-        fig_rev = px.line(rev_time, x='Order_Date', y='Revenue', title="Revenue Over Time", color_discrete_sequence=['#4F46E5'])
-        st.plotly_chart(fig_rev, use_container_width=True)
+        st.plotly_chart(px.line(rev_time, x='Order_Date', y='Revenue', title="Revenue Over Time", color_discrete_sequence=['#4F46E5']), use_container_width=True)
         
     with col2:
         prof_time = df.groupby(df['Order_Date'].dt.to_period("M"))['Profit'].sum().reset_index()
         prof_time['Order_Date'] = prof_time['Order_Date'].dt.to_timestamp()
-        fig_prof = px.line(prof_time, x='Order_Date', y='Profit', title="Profit Over Time", color_discrete_sequence=['#10B981'])
-        st.plotly_chart(fig_prof, use_container_width=True)
+        st.plotly_chart(px.line(prof_time, x='Order_Date', y='Profit', title="Profit Over Time", color_discrete_sequence=['#10B981']), use_container_width=True)
 
     col3, col4, col5 = st.columns(3)
     with col3:
@@ -181,30 +182,28 @@ if page == "Executive Overview":
         st.plotly_chart(px.bar(seg_ord, x='Customer_Segment', y='Order_ID', title="Orders by Segment"), use_container_width=True)
 
 # ==========================================
-# PAGE 2: DIAGNOSTIC ANALYSIS (The Core)
+# PAGE 2: DIAGNOSTIC ANALYSIS 
 # ==========================================
 elif page == "Diagnostic Analysis":
     st.title("Diagnostic Analysis")
     
     kpi_map = {
-        "Revenue": {"col": "Revenue", "agg": "sum", "type": "currency", "good": "up"},
-        "Profit": {"col": "Profit", "agg": "sum", "type": "currency", "good": "up"},
-        "Orders": {"col": "Order_ID", "agg": "nunique", "type": "number", "good": "up"},
-        "Return Rate": {"col": "Returned_Num", "agg": "mean", "type": "percent", "good": "down"},
-        "Complaint Rate": {"col": "Complaint_Num", "agg": "mean", "type": "percent", "good": "down"},
-        "Customer Rating": {"col": "Customer_Rating", "agg": "mean", "type": "number", "good": "up"}
+        "Revenue": {"col": "Revenue", "agg": "sum", "type": "currency"},
+        "Profit": {"col": "Profit", "agg": "sum", "type": "currency"},
+        "Orders": {"col": "Order_ID", "agg": "nunique", "type": "number"},
+        "Return Rate": {"col": "Returned_Num", "agg": "mean", "type": "percent"},
+        "Complaint Rate": {"col": "Complaint_Num", "agg": "mean", "type": "percent"},
+        "Customer Rating": {"col": "Customer_Rating", "agg": "mean", "type": "number"}
     }
     
     selected_kpi = st.selectbox("Select KPI to Analyze:", list(kpi_map.keys()))
     kpi_info = kpi_map[selected_kpi]
     
-    # Period Calculation (Current vs Previous half of selected date range)
     total_days = (end_date - start_date).days
     if total_days < 2:
-        st.warning("Please select a wider date range (at least 2 days) to enable comparative diagnostic analysis.")
+        st.warning("Please select a wider date range (at least 2 days) in the sidebar to enable comparative analysis.")
     else:
         mid_date = start_date + timedelta(days=total_days//2)
-        
         df_prev = df[df['Order_Date'].dt.date < mid_date]
         df_curr = df[df['Order_Date'].dt.date >= mid_date]
         
@@ -216,10 +215,8 @@ elif page == "Diagnostic Analysis":
             
         val_curr = calc_kpi(df_curr, kpi_info)
         val_prev = calc_kpi(df_prev, kpi_info)
-        
         pct_change = ((val_curr - val_prev) / val_prev * 100) if val_prev != 0 else 0
         
-        # Display Comparative KPI
         c1, c2, c3 = st.columns(3)
         fmt = format_inr if kpi_info['type'] == 'currency' else (lambda x: f"{x*100:.1f}%" if kpi_info['type']=='percent' else lambda x: f"{x:,.2f}")
         
@@ -227,61 +224,46 @@ elif page == "Diagnostic Analysis":
         with c2: st.metric("Previous Period", fmt(val_prev))
         with c3: st.metric("% Change", f"{pct_change:+.1f}%")
 
-        # Dimension Analysis
         st.subheader("Diagnostic Drill-Down")
-        
-        # Tree Map for Contribution
         if kpi_info['agg'] == 'sum':
-            fig_tree = px.treemap(df, path=[px.Constant("All"), 'Category', 'Region', 'Customer_Segment'], 
-                                  values=kpi_info['col'], title=f"{selected_kpi} Contribution Breakdown")
+            fig_tree = px.treemap(df, path=[px.Constant("All"), 'Category', 'Region', 'Customer_Segment'], values=kpi_info['col'], title=f"{selected_kpi} Breakdown")
             st.plotly_chart(fig_tree, use_container_width=True)
-        else:
-            st.info(f"Treemap drill-down is reserved for cumulative metrics (Revenue, Profit).")
 
-        # AI Diagnostic Insight Generation Engine
         st.subheader("AI Diagnostic Insights")
-        
-        # Find best/worst contributors
         def get_dim_change(dim):
             curr = df_curr.groupby(dim).apply(lambda x: calc_kpi(x, kpi_info))
             prev = df_prev.groupby(dim).apply(lambda x: calc_kpi(x, kpi_info))
             diff = curr.sub(prev, fill_value=0)
             return diff.idxmax(), diff.max(), diff.idxmin(), diff.min()
             
-        best_cat, best_cat_val, worst_cat, worst_cat_val = get_dim_change('Category')
-        best_reg, best_reg_val, worst_reg, worst_reg_val = get_dim_change('Region')
+        best_cat, _, worst_cat, _ = get_dim_change('Category')
+        best_reg, _, worst_reg, _ = get_dim_change('Region')
         
-        # Driver Correlations
         numeric_cols = ['Discount_%', 'Delivery_Days', 'Marketing_Spend', 'Competitor_Price', 'Stock_Availability']
         correlations = df[numeric_cols + [kpi_info['col']]].corr()[kpi_info['col']].drop(kpi_info['col'])
         
-        # Formulate Insights
         trend_word = "increased" if pct_change > 0 else "decreased"
         
-        key_findings = f"• **{selected_kpi}** {trend_word} by **{abs(pct_change):.1f}%** in the current period compared to the previous period.<br>"
-        key_findings += f"• **{best_cat}** was the strongest positive contributor, whereas **{worst_cat}** saw the most significant negative pressure.<br>"
-        key_findings += f"• Regionally, **{best_reg}** outperformed, while **{worst_reg}** lagged behind."
+        key_findings = f"• **{selected_kpi}** {trend_word} by **{abs(pct_change):.1f}%** recently.<br>"
+        key_findings += f"• **{best_cat}** was the strongest positive contributor, whereas **{worst_cat}** saw negative pressure.<br>"
+        key_findings += f"• Regionally, **{best_reg}** outperformed, while **{worst_reg}** lagged."
 
         drivers = ""
         strong_corr = correlations[abs(correlations) > 0.15]
         if not strong_corr.empty:
             for feat, val in strong_corr.items():
                 direction = "higher" if val > 0 else "lower"
-                drivers += f"• There is a notable correlation ({val:.2f}) between **{feat}** and {selected_kpi}. {direction.title()} {feat} is associated with increased {selected_kpi}.<br>"
+                drivers += f"• Correlation detected ({val:.2f}) between **{feat}** and {selected_kpi}. {direction.title()} {feat} is associated with increased {selected_kpi}.<br>"
         else:
-            drivers = "• No strong linear correlations detected between standard operational metrics (Delivery, Discount, etc.) and this KPI during the selected period."
+            drivers = "• No strong linear correlations detected between standard operational metrics and this KPI."
 
-        # Render AI Box
         st.markdown(f"""
         <div class="insight-box">
-            <h4>🧠 Key Findings</h4>
-            <p>{key_findings}</p>
-            <h4>🔍 Possible Drivers</h4>
-            <p>{drivers}</p>
+            <h4>🧠 Key Findings</h4><p>{key_findings}</p>
+            <h4>🔍 Possible Drivers</h4><p>{drivers}</p>
             <h4>🎯 Recommended Actions</h4>
-            <p>• Investigate the root cause of the drop in {worst_cat} category within the {worst_reg} region.<br>
-            • Consider replicating the successful operational practices seen in {best_cat} and {best_reg}.<br>
-            • Monitor identified drivers closely to mitigate risks before they impact the bottom line.</p>
+            <p>• Investigate root cause of drops in {worst_cat} within {worst_reg}.<br>
+            • Replicate successful practices from {best_cat} and {best_reg}.</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -311,8 +293,6 @@ elif page == "Customer Analysis":
 elif page == "Product & Operations":
     st.title("Product & Operations")
     
-    # Top/Bottom Products
-    st.subheader("Product Performance")
     prod_perf = df.groupby('Product').agg({'Revenue': 'sum', 'Profit': 'sum', 'Returned_Num':'mean'}).reset_index()
     
     col1, col2 = st.columns(2)
@@ -323,8 +303,6 @@ elif page == "Product & Operations":
         bottom_10 = prod_perf.nsmallest(10, 'Profit')
         st.plotly_chart(px.bar(bottom_10, x='Profit', y='Product', orientation='h', title="Bottom 10 Products (Profit)", color_discrete_sequence=['#EF4444']), use_container_width=True)
 
-    # Operations scatter
-    st.subheader("Operational Drivers")
     c3, c4 = st.columns(2)
     with c3:
         st.plotly_chart(px.scatter(df, x='Discount_%', y='Profit', color='Category', title="Discount vs Profit", trendline="ols"), use_container_width=True)
